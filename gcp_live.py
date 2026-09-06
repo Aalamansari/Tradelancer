@@ -10,7 +10,7 @@ CLOSED M5 bars and trades the demo account per the approved rules:
                              a restart) -- never held overnight.
   Order:                     market, 0.01 lot, ONE position at a time.
   Stop:                      SL = 2*ATR.
-  Target (ADX at entry):     ADX>25 -> 1:3 (TP = 6*ATR) ; ADX<=25 -> 1:2 (TP = 4*ATR).
+  Target:                    fixed TP = 4*ATR = 2R (the indicator's TP4; no ADX/ratio pick).
   Extra exits:               opposite signal -> close ; 23:30 cutoff -> close.
   Daily (reset each IST day): max 3 entries ; two CONSECUTIVE losses -> stop for
                              the day (a win resets the streak).
@@ -59,8 +59,8 @@ RUN_UNTIL = time(23, 30)         # a trade may stay open until here; then force-
 MAX_TRADES_PER_DAY = 3
 MAX_CONSEC_LOSSES = 2
 COOLDOWN_BARS = 8
-ADX_TREND = 25.0                 # ADX strictly above this -> 1:3, else 1:2
 SL_MULT = 2.0
+TP_MULT = 4.0                    # fixed target = 4*ATR = 2R (indicator's TP4)
 
 WARMUP_BARS = 400                # M5 bars pulled each cycle (covers all lookbacks)
 POLL_SECONDS = 10
@@ -90,15 +90,6 @@ def should_be_flat(now_ist: datetime) -> bool:
 def daily_gate_open(trades_today: int, consec_losses: int) -> bool:
     """True if the daily rules still permit a new entry."""
     return trades_today < MAX_TRADES_PER_DAY and consec_losses < MAX_CONSEC_LOSSES
-
-
-def tp_multiplier(adx: float) -> float:
-    """ATR multiple for the target: 6*ATR (1:3) in a strong trend, else 4*ATR (1:2)."""
-    return 6.0 if adx > ADX_TREND else 4.0
-
-
-def target_ratio(adx: float) -> str:
-    return "1:3" if adx > ADX_TREND else "1:2"
 
 
 def setup_label(row, is_buy: bool) -> str:
@@ -141,15 +132,14 @@ def evaluate_last_closed(d: pd.DataFrame, last_entry_time) -> Signal:
                   close=float(row["close"]), bar_time=bar_time, cooldown_ok=cooldown_ok)
 
 
-def order_prices(side: str, ref_price: float, atr: float, adx: float, digits: int):
-    """Return (sl, tp) for a market entry at ref_price."""
-    tpm = tp_multiplier(adx)
+def order_prices(side: str, ref_price: float, atr: float, digits: int):
+    """Return (sl, tp): SL = 2*ATR, TP = 4*ATR (= 2R), matching the indicator's TP4."""
     if side == "BUY":
         sl = ref_price - SL_MULT * atr
-        tp = ref_price + tpm * atr
+        tp = ref_price + TP_MULT * atr
     else:
         sl = ref_price + SL_MULT * atr
-        tp = ref_price - tpm * atr
+        tp = ref_price - TP_MULT * atr
     return round(sl, digits), round(tp, digits)
 
 
@@ -356,7 +346,7 @@ def run(dry: bool, once: bool):
                              and daily_gate_open(state.trades_today, state.consec_losses)
                              and sig.side is not None and sig.cooldown_ok)
                 if can_enter:
-                    sl, tp = order_prices(sig.side, sig.close, sig.atr, sig.adx, digits)
+                    sl, tp = order_prices(sig.side, sig.close, sig.atr, digits)
                     ticket = send_market(si, sig.side, sl, tp, dry)
                     if not dry and ticket is not None:
                         state.open_ticket = ticket
@@ -364,7 +354,7 @@ def run(dry: bool, once: bool):
                         state.last_entry_time = pd.Timestamp(bar_time).isoformat()
                     action = "ENTRY_DRYRUN" if dry else "ENTRY"
                     detail = (f"{sig.side} {sig.setup} adx={sig.adx:.1f} "
-                              f"target={target_ratio(sig.adx)} sl={sl} tp={tp}")
+                              f"target=2R sl={sl} tp={tp}")
 
             log_row(ts_ist=now.isoformat(timespec="seconds"), bar_time=str(bar_time),
                     in_pos=(pos is not None), sig=str(sig.side), setup=sig.setup,

@@ -44,21 +44,11 @@ def test_daily_gate():
     assert not g.daily_gate_open(1, 2)
 
 
-def test_target_selection():
-    assert g.tp_multiplier(25.0) == 4.0         # boundary: not > 25 -> 1:2
-    assert g.tp_multiplier(25.1) == 6.0
-    assert g.tp_multiplier(30.0) == 6.0
-    assert g.tp_multiplier(18.0) == 4.0
-    assert g.target_ratio(30.0) == "1:3"
-    assert g.target_ratio(20.0) == "1:2"
-
-
-def test_order_prices():
-    # BUY, strong trend (1:3): sl 2*ATR below, tp 6*ATR above
-    sl, tp = g.order_prices("BUY", 100.0, 2.0, 30.0, 2)
-    assert sl == 96.0 and tp == 112.0
-    # SELL, weak trend (1:2): sl 2*ATR above, tp 4*ATR below
-    sl, tp = g.order_prices("SELL", 100.0, 2.0, 20.0, 2)
+def test_order_prices_flat_2R():
+    # Indicator-faithful: SL = 2*ATR, TP = 4*ATR (= 2R), regardless of ADX.
+    sl, tp = g.order_prices("BUY", 100.0, 2.0, 2)
+    assert sl == 96.0 and tp == 108.0
+    sl, tp = g.order_prices("SELL", 100.0, 2.0, 2)
     assert sl == 104.0 and tp == 92.0
 
 
@@ -78,7 +68,6 @@ def test_signal_buy_no_cooldown():
     assert sig.side == "BUY"
     assert sig.setup == "SQUEEZE"
     assert sig.cooldown_ok
-    assert g.target_ratio(sig.adx) == "1:3"
 
 
 def test_signal_blocked_by_cooldown():

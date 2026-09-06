@@ -65,6 +65,10 @@ class Cfg:
     point: float = 0.01         # price value of 1 "point" (gold 0.01; 5-digit FX 1e-05)
     trail_schedule: dict = field(default_factory=lambda: dict(RULE_A))  # mode="trail" only
     trail_on_close: bool = False   # trail: advance stop on bar CLOSE (strict) vs HIGH/LOW touch
+    adx_tp: bool = False        # full mode: ADX-based final TP (the live bot's rule)
+    adx_thresh: float = 25.0    #   ADX > thresh -> tp_strong*ATR, else tp_weak*ATR
+    tp_weak: float = 4.0        #   default 4*ATR = +2R (indicator-faithful)
+    tp_strong: float = 6.0      #   6*ATR = +3R in a strong trend
 
 
 @dataclass
@@ -83,7 +87,7 @@ def _cost_usd(spread_pts_bar, cfg: Cfg):
 def simulate(d: pd.DataFrame, cfg: Cfg):
     o = d["open"].to_numpy(); h = d["high"].to_numpy()
     l = d["low"].to_numpy();  c = d["close"].to_numpy()
-    atr = d["atr"].to_numpy(); spr = d["spread"].to_numpy()
+    atr = d["atr"].to_numpy(); spr = d["spread"].to_numpy(); adxv = d["adx"].to_numpy()
     t = d["time"].to_list()
     raw_buy = d["raw_buy"].to_numpy(); raw_sell = d["raw_sell"].to_numpy()
     filt = d["filt"].to_numpy()
@@ -110,7 +114,9 @@ def simulate(d: pd.DataFrame, cfg: Cfg):
         a = atr[i]
         side = "BUY" if direction == "Long" else "SELL"
         sl, tps[:] = compute_levels(side, entry, a)   # shared: SL=2ATR, TP1..4=1/2/3/4 ATR
-        tp4 = tps[3]
+        # final target: flat 4*ATR (=2R), or the live bot's ADX-based 6/4*ATR when adx_tp
+        tpm = (cfg.tp_strong if adxv[i] > cfg.adx_thresh else cfg.tp_weak) if cfg.adx_tp else 4.0
+        tp4 = entry + tpm * a if direction == "Long" else entry - tpm * a
         risk = 2 * a
         cur_sl = sl
         run_high = run_low = entry

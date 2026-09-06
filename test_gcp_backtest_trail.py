@@ -12,7 +12,7 @@ NOCOST = dict(use_data_spread=False, fixed_spread_pts=0.0, slip_pts=0.0)
 def _df(specs, atr=2.0):
     """Build an indicatored-shape frame from a list of per-bar dicts."""
     base = dict(raw_buy=False, raw_sell=False, filt=True, confirm_bull=False,
-                confirm_bear=False, vol_ok=True, spread=0.0)
+                confirm_bear=False, vol_ok=True, spread=0.0, adx=20.0)
     rows = []
     for i, s in enumerate(specs):
         r = dict(base)
@@ -97,6 +97,43 @@ def test_trail_short_locks_profit_on_reversal():
     assert tr[0].outcome == "TRAIL"
     assert tr[0].exit == 98.0
     assert abs(tr[0].r - 0.5) < 1e-9
+
+
+# --- ADX-based TP (the live bot's rule): 6*ATR if ADX>25 else 4*ATR, SL 2*ATR ---
+def test_full_adx_tp_3R_strong_trend():
+    df = _df([
+        {"o": 100, "h": 100, "l": 100, "c": 100},
+        {"o": 100, "h": 100, "l": 100, "c": 100, "raw_buy": True, "confirm_bull": True, "adx": 30.0},
+        {"o": 100, "h": 112, "l": 100, "c": 111},   # ADX>25 -> target 6*ATR (112) = +3R
+    ])
+    tr = bt.simulate(df, bt.Cfg(mode="full", adx_tp=True, **NOCOST))
+    assert len(tr) == 1
+    assert tr[0].exit == 112.0
+    assert abs(tr[0].r - 3.0) < 1e-9
+
+
+def test_full_adx_tp_2R_weak_trend():
+    df = _df([
+        {"o": 100, "h": 100, "l": 100, "c": 100},
+        {"o": 100, "h": 100, "l": 100, "c": 100, "raw_buy": True, "confirm_bull": True, "adx": 20.0},
+        {"o": 100, "h": 108, "l": 100, "c": 107},   # ADX<=25 -> target 4*ATR (108) = +2R
+    ])
+    tr = bt.simulate(df, bt.Cfg(mode="full", adx_tp=True, **NOCOST))
+    assert len(tr) == 1
+    assert tr[0].exit == 108.0
+    assert abs(tr[0].r - 2.0) < 1e-9
+
+
+def test_full_flat_tp_ignores_adx():
+    # default (adx_tp off) -> always 2R (108) even in a strong-ADX trend
+    df = _df([
+        {"o": 100, "h": 100, "l": 100, "c": 100},
+        {"o": 100, "h": 100, "l": 100, "c": 100, "raw_buy": True, "confirm_bull": True, "adx": 30.0},
+        {"o": 100, "h": 112, "l": 100, "c": 111},
+    ])
+    tr = bt.simulate(df, bt.Cfg(mode="full", **NOCOST))
+    assert tr[0].exit == 108.0
+    assert abs(tr[0].r - 2.0) < 1e-9
 
 
 def main():
