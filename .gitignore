@@ -1,0 +1,8 @@
+# Python
+__pycache__/
+*.pyc
+
+# Live-bot runtime artifacts (regenerated on run; may contain demo account/balance)
+gcp_live_state.json
+gcp_live_log.csv
+gcp_live_console.log
